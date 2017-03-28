@@ -61,6 +61,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/TypeBuilder.h"
+#include "llvm/IR/DebugInfo.h"
 #else
 #include "llvm/Attributes.h"
 #include "llvm/BasicBlock.h"
@@ -1556,6 +1557,15 @@ static inline const llvm::fltSemantics * fpWidthToSemantics(unsigned width) {
 
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   Instruction *i = ki->inst;
+  const DebugLoc dl = i->getDebugLoc();
+  if(dl) {
+      const auto col = dl.getCol();
+      const auto line = dl.getLine();
+      const auto opname = i->getOpcodeName();
+      auto* scope = cast<DIScope>(dl.getScope());
+      const auto filename = scope->getFilename();
+      printf("executing opcode %s at \"%s\" %d,%d\n", opname, filename.str().c_str(), line, col);
+  }
   switch (i->getOpcode()) {
     // Control flow
   case Instruction::Ret: {
