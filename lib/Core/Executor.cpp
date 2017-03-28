@@ -1467,6 +1467,7 @@ void Executor::executeCall(ExecutionState &state,
   }
 }
 
+#include <iostream>
 void Executor::transferToBasicBlock(BasicBlock *dst, BasicBlock *src, 
                                     ExecutionState &state) {
   // Note that in general phi nodes can reuse phi values from the same
@@ -1485,6 +1486,22 @@ void Executor::transferToBasicBlock(BasicBlock *dst, BasicBlock *src,
   KFunction *kf = state.stack.back().kf;
   unsigned entry = kf->basicBlockEntry[dst];
   state.pc = &kf->instructions[entry];
+
+  // HOOK: basic block transfer
+  const auto src_instr_op = (*state.prevPC).inst->getOpcode();
+  if(src_instr_op == Instruction::Br || src_instr_op == Instruction::Switch) {
+    const auto src_id = (*state.prevPC).info->id;
+    const auto src_line = (*state.prevPC).info->line;
+    const auto dest_id = (*state.pc).info->id;
+    const auto dest_line = (*state.pc).info->line;
+    std::cout << src_id << " (" << src_line << ") -> " << dest_id << " (" << dest_line << ")" << std::endl;
+    if(OnlyReplaySeeds) {
+      std::string constraints;
+      getConstraintLog(state, constraints, Interpreter::KQUERY);
+      std::cout << constraints;
+    }
+  }
+
   if (state.pc->inst->getOpcode() == Instruction::PHI) {
     PHINode *first = static_cast<PHINode*>(state.pc->inst);
     state.incomingBBIndex = first->getBasicBlockIndex(src);
