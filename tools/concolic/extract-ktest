@@ -9,7 +9,7 @@
 # 
 # ===----------------------------------------------------------------------===##
 
-import os, struct, sys, argparse
+import os, struct, sys, argparse, glob
 
 version_no=3
 
@@ -91,12 +91,20 @@ def main(args):
 		parser.print_help()
 		exit(1)
 
-	for fin in args.ktest:
-		b = KTest.fromfile(fin)
-		assert(b'stdin' in b.objects)
-		filename = "test{:07}.in".format(b.testnum)
-		with open(os.path.join(args.output, filename), 'wb') as ff:
-			ff.write(trimZeros(b.objects[b'stdin']))
+	extract_count = 0
+	for inp in args.ktest:
+		if os.path.isdir(inp):
+			files = glob.iglob(os.path.join(inp, "*.ktest"))
+		else:
+			files = [inp]
+		for fin in files:
+			b = KTest.fromfile(fin)
+			assert(b'stdin' in b.objects)
+			filename = "test{:07}.in".format(b.testnum)
+			with open(os.path.join(args.output, filename), 'wb') as ff:
+				ff.write(trimZeros(b.objects[b'stdin']))
+			extract_count += 1
+	print("extraced {} tests".format(extract_count))
 
 
 if __name__=='__main__':
