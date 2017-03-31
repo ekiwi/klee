@@ -323,6 +323,11 @@ namespace {
   MaxMemoryInhibit("max-memory-inhibit",
             cl::desc("Inhibit forking at memory cap (vs. random terminate) (default=on)"),
             cl::init(true));
+
+  cl::opt<unsigned>
+  LastBranchSourceId("last-branch-src", cl::init(0));
+  cl::opt<unsigned>
+  LastBranchDestinationId("last-branch-dst", cl::init(0));
 }
 
 
@@ -1496,9 +1501,13 @@ void Executor::transferToBasicBlock(BasicBlock *dst, BasicBlock *src,
     //const auto dest_line = (*state.pc).info->line;
     //std::cout << src_id << " (" << src_line << ") -> " << dest_id << " (" << dest_line << ")" << std::endl;
     if(OnlyReplaySeeds) {
-      std::string constraints;
-      //getConstraintLog(state, constraints, Interpreter::KQUERY);
-      //std::cout << constraints;
+      if(src_id == LastBranchSourceId && dest_id == LastBranchDestinationId) {
+        std::string constraints;
+        getConstraintLog(state, constraints, Interpreter::SMTLIB2);
+        std::cout << "begin_smtlib2" << std::endl << constraints << "end_smtlib2";
+        // our job ist done => exit here
+        doDumpStates(); // TODO: does this realy exit immediately?
+      }
     } else if(replayKTest) {
         std::cout << "bb" << src_id << "," << dest_id << std::endl;
     }
