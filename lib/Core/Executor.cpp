@@ -1493,12 +1493,12 @@ void Executor::transferToBasicBlock(BasicBlock *dst, BasicBlock *src,
   state.pc = &kf->instructions[entry];
 
   // HOOK: basic block transfer
-  const auto src_instr_op = (*state.prevPC).inst->getOpcode();
+  const unsigned src_instr_op = (*state.prevPC).inst->getOpcode();
   if(src_instr_op == Instruction::Br || src_instr_op == Instruction::Switch) {
-    const auto src_id = (*state.prevPC).info->id;
-    //const auto src_line = (*state.prevPC).info->line;
-    const auto dest_id = (*state.pc).info->id;
-    //const auto dest_line = (*state.pc).info->line;
+    const unsigned src_id = (*state.prevPC).info->id;
+    //const unsigned src_line = (*state.prevPC).info->line;
+    const unsigned dest_id = (*state.pc).info->id;
+    //const unsigned dest_line = (*state.pc).info->line;
     //std::cout << src_id << " (" << src_line << ") -> " << dest_id << " (" << dest_line << ")" << std::endl;
     if(OnlyReplaySeeds) {
       if(src_id == LastBranchSourceId && dest_id == LastBranchDestinationId) {
