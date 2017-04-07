@@ -1504,7 +1504,7 @@ void Executor::transferToBasicBlock(BasicBlock *dst, BasicBlock *src,
       if(src_id == LastBranchSourceId && dest_id == LastBranchDestinationId) {
         std::string constraints;
         getConstraintLog(state, constraints, Interpreter::SMTLIB2);
-        std::cout << "begin_smtlib2" << std::endl << constraints << "end_smtlib2";
+        std::cout << std::endl << "begin_smtlib2" << std::endl << constraints << "end_smtlib2" << std::endl;
         // our job ist done => exit here
         doDumpStates(); // TODO: does this realy exit immediately?
       }
