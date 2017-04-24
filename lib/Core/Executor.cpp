@@ -1533,7 +1533,8 @@ void Executor::transferToBasicBlock(BasicBlock *dst, BasicBlock *src,
           doDumpStates(); // TODO: does this realy exit immediately?
         }
       } else if(replayKTest) {
-        std::cout << "afl" << afl_branch_index << std::endl;
+        //std::cout << "afl" << afl_branch_index << std::endl;
+          std::cout << "afl cur_location: " << cur_location << std::endl;
       }
     }
 #else
