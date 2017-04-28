@@ -324,17 +324,8 @@ namespace {
             cl::desc("Inhibit forking at memory cap (vs. random terminate) (default=on)"),
             cl::init(true));
 
-#define USE_AFL_ID
-
-#ifdef USE_AFL_ID
   cl::opt<unsigned>
   LastBranchAflId("last-branch-afl-id", cl::init(0));
-#else
-  cl::opt<unsigned>
-  LastBranchSourceId("last-branch-src", cl::init(0));
-  cl::opt<unsigned>
-  LastBranchDestinationId("last-branch-dst", cl::init(0));
-#endif
 }
 
 
@@ -1293,6 +1284,42 @@ void Executor::stepInstruction(ExecutionState &state) {
     haltExecution = true;
 }
 
+#include <iostream>
+static inline int64_t afl_cur_loc(Instruction& instr) {
+  if(!instr.hasMetadata()) return -1;
+  if(instr.getMetadata("afl_cur_loc") == nullptr) return -1;
+  MDNode* meta = instr.getMetadata("afl_cur_loc");
+  ConstantAsMetadata* meta_con = cast<ConstantAsMetadata>(meta->getOperand(0));
+  ConstantInt* src_loc = cast<ConstantInt>(meta_con->getValue());
+  return src_loc->getZExtValue() & 0xffffffff;
+}
+
+// TODO: move to state or something to make sure that this is actually the
+//       latest value from the execution path
+static uint32_t afl_prev_loc = 0;
+
+void Executor::enterBasicBlockHook(ExecutionState &state) {
+  const int64_t maybe_cur_location = afl_cur_loc(*(*state.pc).inst);
+  if(maybe_cur_location >= 0) {
+    uint32_t cur_location = static_cast<uint32_t>(maybe_cur_location);
+    // http://lcamtuf.coredump.cx/afl/technical_details.txt (1)
+    uint32_t afl_branch_index = cur_location ^ afl_prev_loc;
+    afl_prev_loc = cur_location >> 1;
+    if(OnlyReplaySeeds) {
+      if(afl_branch_index == LastBranchAflId) {
+        std::string constraints;
+        getConstraintLog(state, constraints, Interpreter::SMTLIB2);
+        std::cout << std::endl << "begin_smtlib2" << std::endl << constraints << "end_smtlib2" << std::endl;
+        // our job ist done => exit here
+        doDumpStates(); // TODO: does this realy exit immediately?
+      }
+    } else if(replayKTest) {
+      //std::cout << "afl" << afl_branch_index << std::endl;
+        std::cout <<  cur_location << std::endl; //"afl cur_location: " <<
+    }
+  }
+}
+
 void Executor::executeCall(ExecutionState &state, 
                            KInstruction *ki,
                            Function *f,
@@ -1369,6 +1396,8 @@ void Executor::executeCall(ExecutionState &state,
     KFunction *kf = kmodule->functionMap[f];
     state.pushFrame(state.prevPC, kf);
     state.pc = kf->instructions;
+
+    enterBasicBlockHook(state);
 
     if (statsTracker)
       statsTracker->framePushed(state, &state.stack[state.stack.size()-2]);
@@ -1479,22 +1508,6 @@ void Executor::executeCall(ExecutionState &state,
   }
 }
 
-#ifdef USE_AFL_ID
-static inline int64_t afl_cur_loc(Instruction* instr) {
-  if(!instr->hasMetadata()) return -1;
-  if(instr->getMetadata("afl_cur_loc") == nullptr) return -1;
-  MDNode* meta = instr->getMetadata("afl_cur_loc");
-  ConstantAsMetadata* meta_con = cast<ConstantAsMetadata>(meta->getOperand(0));
-  ConstantInt* src_loc = cast<ConstantInt>(meta_con->getValue());
-  return src_loc->getZExtValue() & 0xffffffff;
-}
-
-// TODO: move to state or something to make sure that this is actually the
-//       latest value from the execution path
-static uint32_t afl_prev_loc = 0;
-#endif
-
-#include <iostream>
 void Executor::transferToBasicBlock(BasicBlock *dst, BasicBlock *src, 
                                     ExecutionState &state) {
   // Note that in general phi nodes can reuse phi values from the same
@@ -1515,47 +1528,7 @@ void Executor::transferToBasicBlock(BasicBlock *dst, BasicBlock *src,
   state.pc = &kf->instructions[entry];
 
   // HOOK: basic block transfer
-  const unsigned src_instr_op = (*state.prevPC).inst->getOpcode();
-  if(src_instr_op == Instruction::Br || src_instr_op == Instruction::Switch) {
-#ifdef USE_AFL_ID
-    const int64_t maybe_cur_location = afl_cur_loc((*state.pc).inst);
-    if(maybe_cur_location >= 0) {
-      uint32_t cur_location = static_cast<uint32_t>(maybe_cur_location);
-      // http://lcamtuf.coredump.cx/afl/technical_details.txt (1)
-      uint32_t afl_branch_index = cur_location ^ afl_prev_loc;
-      afl_prev_loc = cur_location >> 1;
-      if(OnlyReplaySeeds) {
-        if(afl_branch_index == LastBranchAflId) {
-          std::string constraints;
-          getConstraintLog(state, constraints, Interpreter::SMTLIB2);
-          std::cout << std::endl << "begin_smtlib2" << std::endl << constraints << "end_smtlib2" << std::endl;
-          // our job ist done => exit here
-          doDumpStates(); // TODO: does this realy exit immediately?
-        }
-      } else if(replayKTest) {
-        //std::cout << "afl" << afl_branch_index << std::endl;
-          std::cout << "afl cur_location: " << cur_location << std::endl;
-      }
-    }
-#else
-    const unsigned src_id = (*state.prevPC).info->id;
-    //const unsigned src_line = (*state.prevPC).info->line;
-    const unsigned dest_id = (*state.pc).info->id;
-    //const unsigned dest_line = (*state.pc).info->line;
-    //std::cout << src_id << " (" << src_line << ") -> " << dest_id << " (" << dest_line << ")" << std::endl;
-    if(OnlyReplaySeeds) {
-      if(src_id == LastBranchSourceId && dest_id == LastBranchDestinationId) {
-        std::string constraints;
-        getConstraintLog(state, constraints, Interpreter::SMTLIB2);
-        std::cout << std::endl << "begin_smtlib2" << std::endl << constraints << "end_smtlib2" << std::endl;
-        // our job ist done => exit here
-        doDumpStates(); // TODO: does this realy exit immediately?
-      }
-    } else if(replayKTest) {
-        std::cout << "bb" << src_id << "," << dest_id << std::endl;
-    }
-#endif
-  }
+  enterBasicBlockHook(state);
 
   if (state.pc->inst->getOpcode() == Instruction::PHI) {
     PHINode *first = static_cast<PHINode*>(state.pc->inst);

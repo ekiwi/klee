@@ -232,6 +232,11 @@ private:
   void initializeGlobals(ExecutionState &state);
 
   void stepInstruction(ExecutionState &state);
+
+  /// called when a new basic block has been entered and the pc points to
+  /// the first instruction of said basic block
+  void enterBasicBlockHook(ExecutionState &state);
+
   void updateStates(ExecutionState *current);
   void transferToBasicBlock(llvm::BasicBlock *dst, 
 			    llvm::BasicBlock *src,
