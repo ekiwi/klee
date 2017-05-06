@@ -130,6 +130,10 @@ bool OvershiftCheckPass::runOnModule(Module &M) {
                                           false,  /* sign doesn't matter */
                                           "int_cast_to_i64",
                                           static_cast<Instruction *>(i));
+            MDNode *metadata = binOp->getMetadata("afl_cur_loc");
+            if (metadata) {
+              shift->setMetadata("afl_cur_loc", metadata);
+            }
             args.push_back(shift);
 
 
