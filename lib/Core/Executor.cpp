@@ -826,7 +826,13 @@ Executor::fork(ExecutionState &current, ref<Expr> condition, bool isInternal) {
   if (isSeeding)
     timeout *= it->second.size();
   solver->setTimeout(timeout);
-  bool success = solver->evaluate(current, condition, res);
+  bool success;
+  if (OnlyReplaySeeds) {
+    success = true;
+    res = Solver::Unknown;
+  } else {
+    success = solver->evaluate(current, condition, res);
+  }
   solver->setTimeout(0);
   if (!success) {
     current.pc = current.prevPC;
@@ -1172,7 +1178,19 @@ Executor::toConstant(ExecutionState &state,
     return CE;
 
   ref<ConstantExpr> value;
-  bool success = solver->getValue(state, e, value);
+  bool success;
+  if (OnlyReplaySeeds) {
+    std::map< ExecutionState*, std::vector<SeedInfo> >::iterator it =
+      seedMap.find(&state);
+    for (std::vector<SeedInfo>::iterator siit = it->second.begin(),
+           siie = it->second.end(); siit != siie; ++siit) {
+      success =
+        solver->getValue(state, siit->assignment.evaluate(e), value);
+      break;
+    }
+  } else {
+    success = solver->getValue(state, e, value);
+  }
   assert(success && "FIXME: Unhandled solver failure");
   (void) success;
 
@@ -3423,7 +3441,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   ObjectPair op;
   bool success;
   solver->setTimeout(coreSolverTimeout);
-  if (!state.addressSpace.resolveOne(state, solver, address, op, success)) {
+  if (OnlyReplaySeeds || !state.addressSpace.resolveOne(state, solver, address, op, success)) {
     address = toConstant(state, address, "resolveOne failure");
     success = state.addressSpace.resolveOne(cast<ConstantExpr>(address), op);
   }
