@@ -438,9 +438,14 @@ void KleeHandler::processTestCase(const ExecutionState &state,
 
   if (!NoOutput) {
     std::vector< std::pair<std::string, std::vector<unsigned char> > > out;
-    bool success = m_interpreter->getSymbolicSolution(state, out);
+    bool success;
+    if (SeedOutFile.empty()) {
+      success = m_interpreter->getSymbolicSolution(state, out);
+    } else {
+      success = false;
+    }
 
-    if (!success)
+    if (!success && SeedOutFile.empty())
       klee_warning("unable to get symbolic solution, losing test case");
 
     double start_time = util::getWallTime();
