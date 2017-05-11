@@ -1033,7 +1033,7 @@ void Executor::addConstraint(ExecutionState &state, ref<Expr> condition) {
   // Check to see if this constraint violates seeds.
   std::map< ExecutionState*, std::vector<SeedInfo> >::iterator it = 
     seedMap.find(&state);
-  if (it != seedMap.end()) {
+  if (!OnlyReplaySeeds && it != seedMap.end()) {
     bool warn = false;
     for (std::vector<SeedInfo>::iterator siit = it->second.begin(), 
            siie = it->second.end(); siit != siie; ++siit) {
