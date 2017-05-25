@@ -1740,7 +1740,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> cond = eval(ki, 0, state).value;
     BasicBlock *bb = si->getParent();
 
-    cond = toUnique(state, cond);
+    if (!OnlyReplaySeeds)
+      cond = toUnique(state, cond);
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(cond)) {
       // Somewhat gross to create these all the time, but fine till we
       // switch to an internal rep.
@@ -1799,9 +1800,13 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
         // Check if control flow could take this case
         bool result;
-        bool success = solver->mayBeTrue(state, match, result);
-        assert(success && "FIXME: Unhandled solver failure");
-        (void) success;
+        if (OnlyReplaySeeds) {
+          result = true;
+        } else {
+          bool success = solver->mayBeTrue(state, match, result);
+          assert(success && "FIXME: Unhandled solver failure");
+          (void) success;
+        }
         if (result) {
           BasicBlock *caseSuccessor = it->second;
 
@@ -1826,9 +1831,13 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
       // Check if control could take the default case
       bool res;
-      bool success = solver->mayBeTrue(state, defaultValue, res);
-      assert(success && "FIXME: Unhandled solver failure");
-      (void) success;
+      if (OnlyReplaySeeds) {
+        res = true;
+      } else {
+        bool success = solver->mayBeTrue(state, defaultValue, res);
+        assert(success && "FIXME: Unhandled solver failure");
+        (void) success;
+      }
       if (res) {
         std::pair<std::map<BasicBlock *, ref<Expr> >::iterator, bool> ret =
             branchTargets.insert(
