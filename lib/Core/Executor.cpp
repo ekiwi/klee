@@ -3546,8 +3546,16 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     if (incomplete) {
       terminateStateEarly(*unbound, "Query timed out (resolve).");
     } else {
-      terminateStateOnError(*unbound, "memory error: out of bound pointer", Ptr,
-                            NULL, getAddressInfo(*unbound, address));
+      if (isWrite) {
+        klee_warning("memory error: out of bound pointer (write)");
+      } else {
+        unsigned long *x = (unsigned long *) cast<ConstantExpr>(address)->getZExtValue();
+        unsigned long v = *x;
+        bindLocal(target, state, ConstantExpr::create(bits64::truncateToNBits(v, 8*bytes), 8*bytes));
+        klee_warning("memory error: out of bound pointer (read)");
+      }
+      //terminateStateOnError(*unbound, "memory error: out of bound pointer", Ptr,
+      //                      NULL, getAddressInfo(*unbound, address));
     }
   }
 }
