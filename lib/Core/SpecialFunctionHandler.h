@@ -127,6 +127,7 @@ namespace klee {
     HANDLER(handlePreferCex);
     HANDLER(handlePosixPreferCex);
     HANDLER(handlePrintExpr);
+    HANDLER(handleDumpExpr);
     HANDLER(handlePrintRange);
     HANDLER(handleRange);
     HANDLER(handleRealloc);
@@ -143,6 +144,8 @@ namespace klee {
     HANDLER(handleSubOverflow);
     HANDLER(handleDivRemOverflow);
 #undef HANDLER
+  private:
+    std::map<std::string, uint64_t> expr_dump_ctr;
   };
 } // End klee namespace
 
