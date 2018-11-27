@@ -19,6 +19,7 @@ klee_add_component(kleaverExpr
   ExprEvaluator.cpp
   ExprPPrinter.cpp
   ExprSMTLIBPrinter.cpp
+  ExprUCLID5Printer.cpp
   ExprUtil.cpp
   ExprVisitor.cpp
   Lexer.cpp
