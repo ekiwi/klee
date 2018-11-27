@@ -16,22 +16,17 @@
 namespace klee {
 
 ExprUCLID5Printer::ExprUCLID5Printer()
-    : usedArrays(), o(NULL), query(NULL), p(NULL), haveConstantArray(false),
-      logicToUse(QF_AUFBV),
-      humanReadable(false),
-      smtlibBoolOptions(), arraysToCallGetValueOn(NULL) {
-  setConstantDisplayMode(ConstantDisplayMode::DECIMAL);
-  setAbbreviationMode(AbbreviationMode::ABBR_LET);
-}
+    : usedArrays(), o(nullptr), query(nullptr),
+      p(nullptr), haveConstantArray(false),
+      arraysToCallGetValueOn(nullptr) {}
 
 ExprUCLID5Printer::~ExprUCLID5Printer() {
-  delete p;
+  if(p != nullptr) { delete p; }
 }
 
 void ExprUCLID5Printer::setOutput(llvm::raw_ostream &output) {
   o = &output;
-  delete p;
-
+  if(p != nullptr) { delete p; }
   p = new PrintContext(output);
 }
 
@@ -47,121 +42,38 @@ void ExprUCLID5Printer::reset() {
   seenExprs.clear();
   usedArrays.clear();
   haveConstantArray = false;
-
-  /* Clear the PRODUCE_MODELS option if it was automatically set.
-   * We need to do this because the next query might not need the
-   * (get-value) SMT-LIBv2 command.
-   */
-  if (arraysToCallGetValueOn != NULL)
-    setSMTLIBboolOption(PRODUCE_MODELS, OPTION_DEFAULT);
-
-  arraysToCallGetValueOn = NULL;
-}
-
-bool ExprUCLID5Printer::isHumanReadable() { return humanReadable; }
-
-bool ExprUCLID5Printer::setConstantDisplayMode(ConstantDisplayMode cdm) {
-  if (cdm > DECIMAL)
-    return false;
-
-  this->cdm = cdm;
-  return true;
+  arraysToCallGetValueOn = nullptr;
 }
 
 void ExprUCLID5Printer::printConstant(const ref<ConstantExpr> &e) {
-  /* Handle simple boolean constants */
-
+  // boolean constants
   if (e->isTrue()) {
     *p << "true";
     return;
   }
-
   if (e->isFalse()) {
     *p << "false";
     return;
   }
 
-  /* Handle bitvector constants */
-
+  // bit vector constants
   std::string value;
-
-  /* SMTLIBv2 deduces the bit-width (should be 8-bits in our case)
-   * from the length of the string (e.g. zero is #b00000000). LLVM
-   * doesn't know about this so we need to pad the printed output
-   * with the appropriate number of zeros (zeroPad)
-   */
-  unsigned int zeroPad = 0;
-
-  switch (cdm) {
-  case BINARY:
-    e->toString(value, 2);
-    *p << "#b";
-
-    zeroPad = e->getWidth() - value.length();
-
-    for (unsigned int count = 0; count < zeroPad; count++)
-      *p << "0";
-
-    *p << value;
-    break;
-
-  case HEX:
-    e->toString(value, 16);
-    *p << "#x";
-
-    zeroPad = (e->getWidth() / 4) - value.length();
-    for (unsigned int count = 0; count < zeroPad; count++)
-      *p << "0";
-
-    *p << value;
-    break;
-
-  case DECIMAL:
-    e->toString(value, 10);
-    *p << "(_ bv" << value << " " << e->getWidth() << ")";
-    break;
-
-  default:
-    llvm_unreachable("Unexpected constant display mode");
-  }
+  e->toString(value, 10);
+  *p << value << "bv" << e->getWidth();
 }
 
 void ExprUCLID5Printer::printExpression(
-    const ref<Expr> &e, ExprUCLID5Printer::SMTLIB_SORT expectedSort) {
+  const ref<Expr> &e, ExprUCLID5Printer::SMTLIB_SORT expectedSort) {
   // check if casting might be necessary
   if (getSort(e) != expectedSort) {
     printCastToSort(e, expectedSort);
     return;
   }
 
-  switch (abbrMode) {
-  case ABBR_NONE:
-    break;
-
-  case ABBR_LET: {
-    BindingMap::iterator i = bindings.find(e);
-    if (i != bindings.end()) {
-      *p << "?B" << i->second;
-      return;
-    }
-    break;
-  }
-
-  case ABBR_NAMED: {
-    BindingMap::iterator i = bindings.find(e);
-    if (i != bindings.end()) {
-      if (i->second > 0) {
-        *p << "(! ";
-        printFullExpression(e, expectedSort);
-        *p << " :named ?B" << i->second << ")";
-        i->second = -i->second;
-      } else {
-        *p << "?B" << -i->second;
-      }
-      return;
-    }
-    break;
-  }
+  BindingMap::iterator i = bindings.find(e);
+  if (i != bindings.end()) {
+    *p << "?B" << i->second;
+    return;
   }
 
   printFullExpression(e, expectedSort);
@@ -211,11 +123,6 @@ void ExprUCLID5Printer::printFullExpression(
   case Expr::Or:
   case Expr::Xor:
   case Expr::Not:
-    /* These operators have a bitvector version and a bool version.
-     * For these operators only (e.g. wouldn't apply to bvult) if the expected
-     * sort of the expression is T then that implies the arguments are also of
-     * type T.
-     */
     printLogicalOrBitVectorExpr(e, expectedSort);
     return;
 
@@ -224,9 +131,6 @@ void ExprUCLID5Printer::printFullExpression(
     return;
 
   default:
-    /* The remaining operators (Add,Sub...,Ult,Ule,..)
-     * Expect SORT_BITVECTOR arguments
-     */
     printSortArgsExpr(e, SORT_BITVECTOR);
     return;
   }
@@ -236,17 +140,17 @@ void ExprUCLID5Printer::printReadExpr(const ref<ReadExpr> &e) {
   *p << "(" << getSMTLIBKeyword(e) << " ";
   p->pushIndent();
 
-  printSeperator();
+  p->write(" ");
 
   // print array with updates recursively
   printUpdatesAndArray(e->updates.head, e->updates.root);
 
   // print index
-  printSeperator();
+  p->write(" ");
   printExpression(e->index, SORT_BITVECTOR);
 
   p->popIndent();
-  printSeperator();
+  p->write(" ");
   *p << ")";
 }
 
@@ -258,13 +162,13 @@ void ExprUCLID5Printer::printExtractExpr(const ref<ExtractExpr> &e) {
      << ") ";
 
   p->pushIndent(); // add indent for recursive call
-  printSeperator();
+  p->write(" ");
 
   // recurse
   printExpression(e->getKid(0), SORT_BITVECTOR);
 
   p->popIndent(); // pop indent added for the recursive call
-  printSeperator();
+  p->write(" ");
   *p << ")";
 }
 
@@ -288,13 +192,13 @@ void ExprUCLID5Printer::printCastExpr(const ref<CastExpr> &e) {
   *p << "((_ " << getSMTLIBKeyword(e) << " " << numExtraBits << ") ";
 
   p->pushIndent(); // add indent for recursive call
-  printSeperator();
+  p->write(" ");
 
   // recurse
   printExpression(e->src, SORT_BITVECTOR);
 
   p->popIndent(); // pop indent added for recursive call
-  printSeperator();
+  p->write(" ");
 
   *p << ")";
 }
@@ -335,34 +239,34 @@ void ExprUCLID5Printer::printAShrExpr(const ref<AShrExpr> &e) {
   // abbreviated
   *p << "(ite";
   p->pushIndent();
-  printSeperator();
+  p->write(" ");
 
   *p << "(bvuge";
   p->pushIndent();
-  printSeperator();
+  p->write(" ");
   printExpression(e->getKid(1), SORT_BITVECTOR);
-  printSeperator();
+  p->write(" ");
   printExpression(bitWidthExpr, SORT_BITVECTOR);
   p->popIndent();
-  printSeperator();
+  p->write(" ");
   *p << ")";
 
-  printSeperator();
+  p->write(" ");
   printExpression(zeroExpr, SORT_BITVECTOR);
-  printSeperator();
+  p->write(" ");
 
   *p << "(bvashr";
   p->pushIndent();
-  printSeperator();
+  p->write(" ");
   printExpression(e->getKid(0), SORT_BITVECTOR);
-  printSeperator();
+  p->write(" ");
   printExpression(e->getKid(1), SORT_BITVECTOR);
   p->popIndent();
-  printSeperator();
+  p->write(" ");
   *p << ")";
 
   p->popIndent();
-  printSeperator();
+  p->write(" ");
   *p << ")";
 }
 
@@ -437,25 +341,25 @@ const char *ExprUCLID5Printer::getSMTLIBKeyword(const ref<Expr> &e) {
 
 void ExprUCLID5Printer::printUpdatesAndArray(const UpdateNode *un,
                                              const Array *root) {
-  if (un != NULL) {
+  if (un != nullptr) {
     *p << "(store ";
     p->pushIndent();
-    printSeperator();
+    p->write(" ");
 
     // recurse to get the array or update that this store operations applies to
     printUpdatesAndArray(un->next, root);
 
-    printSeperator();
+    p->write(" ");
 
     // print index
     printExpression(un->index, SORT_BITVECTOR);
-    printSeperator();
+    p->write(" ");
 
     // print value that is assigned to this index of the array
     printExpression(un->value, SORT_BITVECTOR);
 
     p->popIndent();
-    printSeperator();
+    p->write(" ");
     *p << ")";
   } else {
     // The base case of the recursion
@@ -473,44 +377,20 @@ void ExprUCLID5Printer::scanAll() {
   scan(query->expr);
 
   // Scan bindings for expression intra-dependencies
-  if (abbrMode == ABBR_LET)
-    scanBindingExprDeps();
+  scanBindingExprDeps();
 }
 
 void ExprUCLID5Printer::generateOutput() {
-  if (p == NULL || query == NULL || o == NULL) {
-    llvm::errs() << "ExprUCLID5Printer::generateOutput() Can't print SMTLIBv2. "
+  if (p == nullptr || query == nullptr || o == nullptr) {
+    llvm::errs() << "ExprUCLID5Printer::generateOutput() Can't print UCLID5. "
                     "Output or query bad!\n";
     return;
   }
 
-  if (humanReadable)
-    printNotice();
-  printOptions();
-  printSetLogic();
   printArrayDeclarations();
-
-  if (humanReadable)
-    printHumanReadableQuery();
-  else
-    printMachineReadableQuery();
-
-  printAction();
-  printExit();
+  printQueryInSingleAssert();
 }
 
-void ExprUCLID5Printer::printSetLogic() {
-  *o << "(set-logic ";
-  switch (logicToUse) {
-  case QF_ABV:
-    *o << "QF_ABV";
-    break;
-  case QF_AUFBV:
-    *o << "QF_AUFBV";
-    break;
-  }
-  *o << " )\n";
-}
 
 namespace {
 
@@ -524,8 +404,6 @@ struct ArrayPtrsByName {
 
 void ExprUCLID5Printer::printArrayDeclarations() {
   // Assume scan() has been called
-  if (humanReadable)
-    *o << "; Array declarations\n";
 
   // Declare arrays in a deterministic order.
   std::vector<const Array *> sortedArrays(usedArrays.begin(), usedArrays.end());
@@ -541,8 +419,6 @@ void ExprUCLID5Printer::printArrayDeclarations() {
 
   // Set array values for constant values
   if (haveConstantArray) {
-    if (humanReadable)
-      *o << "; Constant Array Definitions\n";
 
     const Array *array;
 
@@ -562,18 +438,18 @@ void ExprUCLID5Printer::printArrayDeclarations() {
           p->pushIndent();
           *p << "= ";
           p->pushIndent();
-          printSeperator();
+          p->write(" ");
 
           *p << "(select " << array->name << " (_ bv" << byteIndex << " "
              << array->getDomain() << ") )";
-          printSeperator();
+          p->write(" ");
           printConstant((*ce));
 
           p->popIndent();
-          printSeperator();
+          p->write(" ");
           *p << ")";
           p->popIndent();
-          printSeperator();
+          p->write(" ");
           *p << ")";
 
           p->breakLineI();
@@ -581,35 +457,6 @@ void ExprUCLID5Printer::printArrayDeclarations() {
       }
     }
   }
-}
-
-void ExprUCLID5Printer::printHumanReadableQuery() {
-  assert(humanReadable && "method must be called in humanReadable mode");
-  *o << "; Constraints\n";
-
-  if (abbrMode != ABBR_LET) {
-    // Generate assert statements for each constraint
-    for (ConstraintManager::const_iterator i = query->constraints.begin();
-         i != query->constraints.end(); i++) {
-      printAssert(*i);
-    }
-
-    *o << "; QueryExpr\n";
-
-    // We negate the Query Expr because in KLEE queries are solved
-    // in terms of validity, but SMT-LIB works in terms of satisfiability
-    ref<Expr> queryAssert = Expr::createIsZero(query->expr);
-    printAssert(queryAssert);
-  } else {
-    // let bindings are only scoped within a single (assert ...) so
-    // the entire query must be printed within a single assert
-    *o << "; Constraints and QueryExpr\n";
-    printQueryInSingleAssert();
-  }
-}
-void ExprUCLID5Printer::printMachineReadableQuery() {
-  assert(!humanReadable && "method should not be called in humanReadable mode");
-  printQueryInSingleAssert();
 }
 
 
@@ -629,33 +476,9 @@ void ExprUCLID5Printer::printQueryInSingleAssert() {
   printAssert(queryAssert);
 }
 
-void ExprUCLID5Printer::printAction() {
-  // Ask solver to check for satisfiability
-  *o << "(check-sat)\n";
-
-  /* If we have arrays to find the values of then we'll
-   * ask the solver for the value of each bitvector in each array
-   */
-  if (arraysToCallGetValueOn != NULL && !arraysToCallGetValueOn->empty()) {
-
-    const Array *theArray = 0;
-
-    // loop over the array names
-    for (std::vector<const Array *>::const_iterator it =
-             arraysToCallGetValueOn->begin();
-         it != arraysToCallGetValueOn->end(); it++) {
-      theArray = *it;
-      // Loop over the array indices
-      for (unsigned int index = 0; index < theArray->size; ++index) {
-        *o << "(get-value ( (select " << (**it).name << " (_ bv" << index << " "
-           << theArray->getDomain() << ") ) ) )\n";
-      }
-    }
-  }
-}
 
 void ExprUCLID5Printer::scan(const ref<Expr> &e) {
-  assert(!(e.isNull()) && "found NULL expression");
+  assert(!(e.isNull()) && "found nullptr expression");
 
   if (isa<ConstantExpr>(e))
     return; // we don't need to scan simple constants
@@ -669,8 +492,9 @@ void ExprUCLID5Printer::scan(const ref<Expr> &e) {
         // Array was not recorded before
 
         // check if the array is constant
-        if (re->updates.root->isConstantArray())
+        if (re->updates.root->isConstantArray()) {
           haveConstantArray = true;
+        }
 
         // scan the update list
         scanUpdates(re->updates.head);
@@ -679,8 +503,9 @@ void ExprUCLID5Printer::scan(const ref<Expr> &e) {
 
     // recurse into the children
     Expr *ep = e.get();
-    for (unsigned int i = 0; i < ep->getNumKids(); i++)
+    for (unsigned int i = 0; i < ep->getNumKids(); i++) {
       scan(ep->getKid(i));
+    }
   } else {
     // Add the expression to the binding map. The semantics of std::map::insert
     // are such that it will not be inserted twice.
@@ -781,43 +606,10 @@ void ExprUCLID5Printer::scanBindingExprDeps() {
 }
 
 void ExprUCLID5Printer::scanUpdates(const UpdateNode *un) {
-  while (un != NULL) {
+  while (un != nullptr) {
     scan(un->index);
     scan(un->value);
     un = un->next;
-  }
-}
-
-void ExprUCLID5Printer::printExit() { *o << "(exit)\n"; }
-
-bool ExprUCLID5Printer::setLogic(SMTLIBv2Logic l) {
-  if (l > QF_AUFBV)
-    return false;
-
-  logicToUse = l;
-  return true;
-}
-
-void ExprUCLID5Printer::printSeperator() {
-  if (humanReadable)
-    p->breakLineI();
-  else
-    p->write(" ");
-}
-
-void ExprUCLID5Printer::printNotice() {
-  *o << "; This file conforms to SMTLIBv2 and was generated by KLEE\n";
-}
-
-void ExprUCLID5Printer::setHumanReadable(bool hr) { humanReadable = hr; }
-
-void ExprUCLID5Printer::printOptions() {
-  // Print out SMTLIBv2 boolean options
-  for (std::map<SMTLIBboolOptions, bool>::const_iterator i =
-           smtlibBoolOptions.begin();
-       i != smtlibBoolOptions.end(); i++) {
-    *o << "(set-option :" << getSMTLIBOptionString(i->first) << " "
-       << ((i->second) ? "true" : "false") << ")\n";
   }
 }
 
@@ -825,13 +617,13 @@ void ExprUCLID5Printer::printAssert(const ref<Expr> &e) {
   p->pushIndent();
   *p << "(assert";
   p->pushIndent();
-  printSeperator();
+  p->write(" ");
 
-  if (abbrMode == ABBR_LET && orderedBindings.size() != 0) {
+  if (orderedBindings.size() != 0) {
     // Only print let expression if we have bindings to use.
     *p << "(let";
     p->pushIndent();
-    printSeperator();
+    p->write(" ");
     *p << "(";
     p->pushIndent();
 
@@ -844,28 +636,28 @@ void ExprUCLID5Printer::printAssert(const ref<Expr> &e) {
       BindingMap levelBindings = orderedBindings[i];
       for (BindingMap::const_iterator j = levelBindings.begin();
            j != levelBindings.end(); ++j) {
-        printSeperator();
+        p->write(" ");
         *p << "(?B" << j->second;
         p->pushIndent();
-        printSeperator();
+        p->write(" ");
 
         // We can abbreviate SORT_BOOL or SORT_BITVECTOR in let expressions
         printExpression(j->first, getSort(j->first));
 
         p->popIndent();
-        printSeperator();
+        p->write(" ");
         *p << ")";
       }
       p->popIndent();
-      printSeperator();
+      p->write(" ");
       *p << ")";
-      printSeperator();
+      p->write(" ");
 
       // Add nested let expressions (if any)
       if (i < orderedBindings.size()-1) {
         *p << "(let";
         p->pushIndent();
-        printSeperator();
+        p->write(" ");
         *p << "(";
         p->pushIndent();
       }
@@ -878,7 +670,7 @@ void ExprUCLID5Printer::printAssert(const ref<Expr> &e) {
 
     for (unsigned i = 0; i < orderedBindings.size(); ++i) {
       p->popIndent();
-      printSeperator();
+      p->write(" ");
       *p << ")";
     }
   } else {
@@ -886,7 +678,7 @@ void ExprUCLID5Printer::printAssert(const ref<Expr> &e) {
   }
 
   p->popIndent();
-  printSeperator();
+  p->write(" ");
   *p << ")";
   p->popIndent();
   p->breakLineI();
@@ -929,56 +721,31 @@ void ExprUCLID5Printer::printCastToSort(const ref<Expr> &e,
                                         ExprUCLID5Printer::SMTLIB_SORT sort) {
   switch (sort) {
   case SORT_BITVECTOR:
-    if (humanReadable) {
-      p->breakLineI();
-      *p << ";Performing implicit bool to bitvector cast";
-      p->breakLine();
-    }
     // We assume the e is a bool that we need to cast to a bitvector sort.
-    *p << "(ite";
-    p->pushIndent();
-    printSeperator();
+    *p << "(if(";
     printExpression(e, SORT_BOOL);
-    printSeperator();
-    *p << "(_ bv1 1)";
-    printSeperator(); // printing the "true" bitvector
-    *p << "(_ bv0 1)";
-    p->popIndent();
-    printSeperator(); // printing the "false" bitvector
-    *p << ")";
+    p->write(") then 1bv1 else 0bv1)");
     break;
   case SORT_BOOL: {
     /* We make the assumption (might be wrong) that any bitvector whose unsigned
-     * decimal value is is zero is interpreted as "false", otherwise it is
+     * decimal value is zero is interpreted as "false", otherwise it is
      * true.
      *
      * This may not be the interpretation we actually want!
      */
     Expr::Width bitWidth = e->getWidth();
-    if (humanReadable) {
-      p->breakLineI();
-      *p << ";Performing implicit bitvector to bool cast";
-      p->breakLine();
-    }
-    *p << "(bvugt";
-    p->pushIndent();
-    printSeperator();
-    // We assume is e is a bitvector
+    *p << "(";
     printExpression(e, SORT_BITVECTOR);
-    printSeperator();
-    *p << "(_ bv0 " << bitWidth << ")";
-    p->popIndent();
-    printSeperator(); // Zero bitvector of required width
-    *p << ")";
+    p->write(" == ");
+    *p << "0bv" << bitWidth << ")";
 
-    if (bitWidth != Expr::Bool)
+    if (bitWidth != Expr::Bool) {
       llvm::errs()
           << "ExprUCLID5Printer : Warning. Casting a bitvector (length "
           << bitWidth << ") to bool!\n";
-
-  } break;
-  default:
-    llvm_unreachable("Unsupported cast");
+    }
+    break;
+  }
   }
 }
 
@@ -990,7 +757,7 @@ void ExprUCLID5Printer::printSelectExpr(const ref<SelectExpr> &e,
   p->pushIndent(); // add indent for recursive call
 
   // The condition
-  printSeperator();
+  p->write(" ");
   printExpression(e->getKid(0), SORT_BOOL);
 
   /* This operator is special in that the remaining children
@@ -998,15 +765,15 @@ void ExprUCLID5Printer::printSelectExpr(const ref<SelectExpr> &e,
    */
 
   // if true
-  printSeperator();
+  p->write(" ");
   printExpression(e->getKid(1), s);
 
   // if false
-  printSeperator();
+  p->write(" ");
   printExpression(e->getKid(2), s);
 
   p->popIndent(); // pop indent added for recursive call
-  printSeperator();
+  p->write(" ");
   *p << ")";
 }
 
@@ -1017,12 +784,12 @@ void ExprUCLID5Printer::printSortArgsExpr(const ref<Expr> &e,
 
   // loop over children and recurse into each expecting they are of sort "s"
   for (unsigned int i = 0; i < e->getNumKids(); i++) {
-    printSeperator();
+    p->write(" ");
     printExpression(e->getKid(i), s);
   }
 
   p->popIndent(); // pop indent added for recursive call
-  printSeperator();
+  p->write(" ");
   *p << ")";
 }
 
@@ -1057,75 +824,13 @@ void ExprUCLID5Printer::printLogicalOrBitVectorExpr(
 
   // loop over children and recurse into each expecting they are of sort "s"
   for (unsigned int i = 0; i < e->getNumKids(); i++) {
-    printSeperator();
+    p->write(" ");
     printExpression(e->getKid(i), s);
   }
 
   p->popIndent(); // pop indent added for recursive call
-  printSeperator();
+  p->write(" ");
   *p << ")";
 }
 
-bool ExprUCLID5Printer::setSMTLIBboolOption(SMTLIBboolOptions option,
-                                            SMTLIBboolValues value) {
-  std::pair<std::map<SMTLIBboolOptions, bool>::iterator, bool> thePair;
-  bool theValue = (value == OPTION_TRUE) ? true : false;
-
-  switch (option) {
-  case PRINT_SUCCESS:
-  case PRODUCE_MODELS:
-  case INTERACTIVE_MODE:
-    thePair = smtlibBoolOptions.insert(
-        std::pair<SMTLIBboolOptions, bool>(option, theValue));
-
-    if (value == OPTION_DEFAULT) {
-      // we should unset (by removing from map) this option so the solver uses
-      // its default
-      smtlibBoolOptions.erase(thePair.first);
-      return true;
-    }
-
-    if (!thePair.second) {
-      // option was already present so modify instead.
-      thePair.first->second = value;
-    }
-    return true;
-  default:
-    return false;
-  }
-}
-
-void
-ExprUCLID5Printer::setArrayValuesToGet(const std::vector<const Array *> &a) {
-  arraysToCallGetValueOn = &a;
-
-  // This option must be set in order to use the SMTLIBv2 command (get-value ()
-  // )
-  if (!a.empty())
-    setSMTLIBboolOption(PRODUCE_MODELS, OPTION_TRUE);
-
-  /* There is a risk that users will ask about array values that aren't
-   * even in the query. We should add them to the usedArrays list and hope
-   * that the solver knows what to do when we ask for the values of arrays
-   * that don't feature in our query!
-   */
-  for (std::vector<const Array *>::const_iterator i = a.begin(); i != a.end();
-       ++i) {
-    usedArrays.insert(*i);
-  }
-}
-
-const char *ExprUCLID5Printer::getSMTLIBOptionString(
-    ExprUCLID5Printer::SMTLIBboolOptions option) {
-  switch (option) {
-  case PRINT_SUCCESS:
-    return "print-success";
-  case PRODUCE_MODELS:
-    return "produce-models";
-  case INTERACTIVE_MODE:
-    return "interactive-mode";
-  default:
-    return "unknown-option";
-  }
-}
 }

@@ -77,22 +77,6 @@ namespace klee {
 ///
 class ExprUCLID5Printer {
 public:
-  /// Different SMTLIBv2 logics supported by this class
-  /// \sa setLogic()
-  enum SMTLIBv2Logic {
-    QF_ABV,  ///< Logic using Theory of Arrays and Theory of Bitvectors
-    QF_AUFBV ///< Logic using Theory of Arrays and Theory of Bitvectors and has
-             ///< uninterpreted functions
-  };
-
-  /// Different SMTLIBv2 options that have a boolean value that can be set
-  /// \sa setSMTLIBboolOption
-  enum SMTLIBboolOptions {
-    PRINT_SUCCESS,   ///< print-success SMTLIBv2 option
-    PRODUCE_MODELS,  ///< produce-models SMTLIBv2 option
-    INTERACTIVE_MODE ///< interactive-mode SMTLIBv2 option
-  };
-
   /// Different SMTLIBv2 bool option values
   /// \sa setSMTLIBboolOption
   enum SMTLIBboolValues {
@@ -102,33 +86,10 @@ public:
                    ///< output)
   };
 
-  enum ConstantDisplayMode {
-    BINARY, ///< Display bit vector constants in binary e.g. #b00101101
-    HEX,    ///< Display bit vector constants in Hexidecimal e.g.#x2D
-    DECIMAL ///< Display bit vector constants in Decimal e.g. (_ bv45 8)
-  };
-
-  /// How to abbreviate repeatedly mentioned expressions. Some solvers do not
-  /// understand all of them, hence the flexibility.
-  enum AbbreviationMode {
-    ABBR_NONE, ///< Do not abbreviate.
-    ABBR_LET,  ///< Abbreviate with let.
-    ABBR_NAMED ///< Abbreviate with :named annotations.
-  };
-
   /// Different supported SMTLIBv2 sorts (a.k.a type) in QF_AUFBV
   enum SMTLIB_SORT { SORT_BITVECTOR, SORT_BOOL };
 
-  /// Allows the way Constant bitvectors are printed to be changed.
-  /// This setting is persistent across queries.
-  /// \return true if setting the mode was successful
-  bool setConstantDisplayMode(ConstantDisplayMode cdm);
-
-  ConstantDisplayMode getConstantDisplayMode() { return cdm; }
-
-  void setAbbreviationMode(AbbreviationMode am) { abbrMode = am; }
-
-  /// Create a new printer that will print a query in the SMTLIBv2 language.
+  /// Create a new printer that will print a UCLID5 program.
   ExprUCLID5Printer();
 
   /// Set the output stream that will be printed to.
@@ -144,70 +105,7 @@ public:
 
   /// Print the query to the llvm::raw_ostream
   /// setOutput() and setQuery() must be called before calling this.
-  ///
-  /// All options should be set before calling this.
-  /// \sa setConstantDisplayMode
-  /// \sa setLogic()
-  /// \sa setHumanReadable
-  /// \sa setSMTLIBboolOption
-  /// \sa setArrayValuesToGet
-  ///
-  /// Mostly it does not matter what order the options are set in. However
-  /// calling
-  /// setArrayValuesToGet() implies PRODUCE_MODELS is set so, if a call to
-  /// setSMTLIBboolOption()
-  /// is made that uses the PRODUCE_MODELS before calling setArrayValuesToGet()
-  /// then the setSMTLIBboolOption()
-  /// call will be ineffective.
   void generateOutput();
-
-  /// Set which SMTLIBv2 logic to use.
-  /// This only affects what logic is used in the (set-logic <logic>) command.
-  /// The rest of the printed SMTLIBv2 commands are the same regardless of the
-  /// logic used.
-  ///
-  /// \return true if setting logic was successful.
-  bool setLogic(SMTLIBv2Logic l);
-
-  /// Sets how readable the printed SMTLIBv2 commands are.
-  /// \param hr If set to true the printed commands are made more human
-  /// readable.
-  ///
-  /// The printed commands are made human readable by...
-  /// - Indenting and line breaking.
-  /// - Adding comments
-  void setHumanReadable(bool hr);
-
-  /// Set SMTLIB options.
-  /// These options will be printed when generateOutput() is called via
-  /// the SMTLIBv2 command (set-option :option-name <value>)
-  ///
-  /// By default no options will be printed so the SMTLIBv2 solver will use
-  /// its default values for all options.
-  ///
-  /// \return true if option was successfully set.
-  ///
-  /// The options set are persistent across calls to setQuery() apart from the
-  /// PRODUCE_MODELS option which this printer may automatically set/unset.
-  bool setSMTLIBboolOption(SMTLIBboolOptions option, SMTLIBboolValues value);
-
-  /// Set the array names that the SMTLIBv2 solver will be asked to determine.
-  /// Calling this method implies the PRODUCE_MODELS option is true and will
-  /// change
-  /// any previously set value.
-  ///
-  /// If no call is made to this function before
-  /// ExprUCLID5Printer::generateOutput() then
-  /// the solver will only be asked to check satisfiability.
-  ///
-  /// If the passed vector is not empty then the values of those arrays will be
-  /// requested
-  /// via (get-value ()) SMTLIBv2 command in the output stream in the same order
-  /// as vector.
-  void setArrayValuesToGet(const std::vector<const Array *> &a);
-
-  /// \return True if human readable mode is switched on
-  bool isHumanReadable();
 
 protected:
   /// Contains the arrays found during scans
@@ -357,17 +255,6 @@ protected:
   bool haveConstantArray;
 
 private:
-  SMTLIBv2Logic logicToUse;
-
-  volatile bool humanReadable;
-
-  // Map of enabled SMTLIB Options
-  std::map<SMTLIBboolOptions, bool> smtlibBoolOptions;
-
-  // Print a SMTLIBv2 option as a C-string
-  const char *
-  getSMTLIBOptionString(ExprUCLID5Printer::SMTLIBboolOptions option);
-
   /// Print expression without top-level abbreviations
   void printFullExpression(const ref<Expr> &e, SMTLIB_SORT expectedSort);
 
@@ -377,9 +264,6 @@ private:
   // Pointer to a vector of Arrays. These will be used for the (get-value () )
   // call.
   const std::vector<const Array *> *arraysToCallGetValueOn;
-
-  ConstantDisplayMode cdm;
-  AbbreviationMode abbrMode;
 };
 }
 
