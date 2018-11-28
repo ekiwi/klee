@@ -9,6 +9,7 @@ Output/
 
 cscope.*
 *~
+/*.user
 
 *.log
 *.sum
