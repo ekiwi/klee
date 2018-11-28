@@ -15,34 +15,45 @@
 
 namespace klee {
 
-ExprUCLID5Printer::ExprUCLID5Printer()
-    : usedArrays(), o(nullptr), query(nullptr),
-      p(nullptr), haveConstantArray(false),
-      arraysToCallGetValueOn(nullptr) {}
+ExprUCLID5Printer::ExprUCLID5Printer(const Query &q, llvm::raw_ostream &output)
+{
+  query = &q;
+  scanAll();
+
+  o = &output;
+  p = new PrintContext(output);
+}
 
 ExprUCLID5Printer::~ExprUCLID5Printer() {
   if(p != nullptr) { delete p; }
 }
 
-void ExprUCLID5Printer::setOutput(llvm::raw_ostream &output) {
-  o = &output;
-  if(p != nullptr) { delete p; }
-  p = new PrintContext(output);
+
+void ExprUCLID5Printer::printPathConditions(const std::string& name) {
+  unsigned int count = 0;
+  for(auto cc : query->constraints) {
+    *p << name << "_" << count << " = ";
+    printExpression(cc, SORT_BOOL);
+    *p << ";\n";
+    count += 1;
+  }
+  *p << name << " = ";
+  if(count == 0) { *p << "true"; }
+  else if(count == 1) { *p << name << "_0"; }
+  else {
+    *p << name << "_0";
+    for(unsigned int ii = 1; ii < count; ii++) {
+      *p << " && " << name << "_" << ii;
+    }
+  }
+  *p << ";\n";
 }
 
-void ExprUCLID5Printer::setQuery(const Query &q) {
-  query = &q;
-  reset(); // clear the data structures
-  scanAll();
-}
-
-void ExprUCLID5Printer::reset() {
-  bindings.clear();
-  orderedBindings.clear();
-  seenExprs.clear();
-  usedArrays.clear();
-  haveConstantArray = false;
-  arraysToCallGetValueOn = nullptr;
+void ExprUCLID5Printer::printExpr(const std::string& name) {
+  const auto sort = getSort(query->expr);
+  *p << name << " = ";
+  printExpression(query->expr, sort);
+  *p << ";\n";
 }
 
 void ExprUCLID5Printer::printConstant(const ref<ConstantExpr> &e) {
@@ -369,28 +380,14 @@ void ExprUCLID5Printer::printUpdatesAndArray(const UpdateNode *un,
 
 void ExprUCLID5Printer::scanAll() {
   // perform scan of all expressions
-  for (ConstraintManager::const_iterator i = query->constraints.begin();
-       i != query->constraints.end(); i++)
-    scan(*i);
-
+  for (auto ii : query->constraints) {
+    scan(ii);
+  }
   // Scan the query too
   scan(query->expr);
-
   // Scan bindings for expression intra-dependencies
   scanBindingExprDeps();
 }
-
-void ExprUCLID5Printer::generateOutput() {
-  if (p == nullptr || query == nullptr || o == nullptr) {
-    llvm::errs() << "ExprUCLID5Printer::generateOutput() Can't print UCLID5. "
-                    "Output or query bad!\n";
-    return;
-  }
-
-  printArrayDeclarations();
-  printQueryInSingleAssert();
-}
-
 
 namespace {
 
@@ -408,13 +405,9 @@ void ExprUCLID5Printer::printArrayDeclarations() {
   // Declare arrays in a deterministic order.
   std::vector<const Array *> sortedArrays(usedArrays.begin(), usedArrays.end());
   std::sort(sortedArrays.begin(), sortedArrays.end(), ArrayPtrsByName());
-  for (std::vector<const Array *>::iterator it = sortedArrays.begin();
-       it != sortedArrays.end(); it++) {
-    *o << "(declare-fun " << (*it)->name << " () "
-                                            "(Array (_ BitVec "
-       << (*it)->getDomain() << ") "
-                                "(_ BitVec " << (*it)->getRange() << ") ) )"
-       << "\n";
+  for (auto array : sortedArrays) {
+    *o << "input " << array->name << " : [bv" << array->getDomain()
+       << "]bv" << array->getRange() << ";\n";
   }
 
   // Set array values for constant values
@@ -434,6 +427,7 @@ void ExprUCLID5Printer::printArrayDeclarations() {
         for (std::vector<ref<ConstantExpr> >::const_iterator
                  ce = array->constantValues.begin();
              ce != array->constantValues.end(); ce++, byteIndex++) {
+          *p << "TODO: generate an assume!\n";
           *p << "(assert (";
           p->pushIndent();
           *p << "= ";

@@ -25,89 +25,23 @@ class raw_ostream;
 
 namespace klee {
 
-/// Base Class for SMTLIBv2 printer for KLEE Queries. It uses the QF_ABV logic.
-/// Note however the logic can be
-/// set to QF_AUFBV because some solvers (e.g. STP) complain if this logic is
-/// set to QF_ABV.
-///
-/// This printer abbreviates expressions according to its abbreviation mode.
-///
-/// It is intended to be used as follows
-/// -# Create instance of this class
-/// -# Set output ( setOutput() )
-/// -# Set query to print ( setQuery() )
-/// -# Set options using the methods prefixed with the word "set".
-/// -# Call generateOutput()
-///
-/// The class can then be used again on another query ( setQuery() ).
-/// The options set are persistent across queries (apart from
-/// setArrayValuesToGet() and PRODUCE_MODELS).
-///
-///
-/// Note that in KLEE at the lowest level the solver checks for validity of the
-/// query, i.e.
-///
-/// \f[ \forall X constraints(X) \to query(X) \f]
-///
-/// Where \f$X\f$ is some assignment, \f$constraints(X)\f$ are the constraints
-/// in the query and \f$query(X)\f$ is the query expression.
-/// If the above formula is true the query is said to be **valid**, otherwise it
-/// is
-/// **invalid**.
-///
-/// The SMTLIBv2 language works in terms of satisfiability rather than validity
-/// so instead
-/// this class must ask the equivalent query but in terms of satisfiability
-/// which is:
-///
-/// \f[ \lnot \exists X constraints(X) \land \lnot query(X) \f]
-///
-/// The printed SMTLIBv2 query actually asks the following:
-///
-///  \f[ \exists X constraints(X) \land \lnot query(X) \f]
-/// Hence the printed SMTLIBv2 query will just assert the constraints and the
-/// negation
-/// of the query expression.
-///
-/// If a SMTLIBv2 solver says the printed query is satisfiable the then original
-/// query passed to this class was **invalid** and if a SMTLIBv2 solver says the
-/// printed
-/// query is unsatisfiable then the original query passed to this class was
-/// **valid**.
-///
 class ExprUCLID5Printer {
 public:
-  /// Different SMTLIBv2 bool option values
-  /// \sa setSMTLIBboolOption
-  enum SMTLIBboolValues {
-    OPTION_TRUE,   ///< Set option to true
-    OPTION_FALSE,  ///< Set option to false
-    OPTION_DEFAULT ///< Use solver's defaults (the option will not be set in
-                   ///< output)
-  };
-
-  /// Different supported SMTLIBv2 sorts (a.k.a type) in QF_AUFBV
-  enum SMTLIB_SORT { SORT_BITVECTOR, SORT_BOOL };
-
   /// Create a new printer that will print a UCLID5 program.
-  ExprUCLID5Printer();
-
-  /// Set the output stream that will be printed to.
-  /// This call is persistent across queries.
-  void setOutput(llvm::raw_ostream &output);
-
-  /// Set the query to print. This will setArrayValuesToGet()
-  /// to none (i.e. no array values will be requested using
-  /// the SMTLIBv2 (get-value ()) command).
-  void setQuery(const Query &q);
+  ExprUCLID5Printer(const Query &q, llvm::raw_ostream &output);
 
   ~ExprUCLID5Printer();
 
-  /// Print the query to the llvm::raw_ostream
-  /// setOutput() and setQuery() must be called before calling this.
-  void generateOutput();
+  // Print symbolic inputs
+  void printArrayDeclarations();
+
+  void printPathConditions(const std::string& name);
+
+  void printExpr(const std::string& name);
 
 protected:
+  enum SMTLIB_SORT { SORT_BITVECTOR, SORT_BOOL };
+
   /// Contains the arrays found during scans
   std::set<const Array *> usedArrays;
 
@@ -152,9 +86,6 @@ protected:
 
   // Print SMTLIBv2 logic to use e.g. (set-logic QF_ABV)
   void printSetLogic();
-
-  // Print SMTLIBv2 assertions for constant arrays
-  void printArrayDeclarations();
 
   // Print SMTLIBv2 for the query optimised for human readability
   void printHumanReadableQuery();
